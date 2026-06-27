@@ -235,6 +235,20 @@ app.prepare().then(() => {
           return;
         }
 
+        // ── Cooldown: prevent rapid-fire bids (3 seconds) ──
+        const lastUserBid = await prisma.bid.findFirst({
+          where: { auctionId, userId: user.id },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        });
+        if (lastUserBid) {
+          const sinceLastBid = (Date.now() - new Date(lastUserBid.createdAt).getTime()) / 1000;
+          if (sinceLastBid < 3) {
+            socket.emit('bid-failed', { message: `请等待 ${Math.ceil(3 - sinceLastBid)} 秒后再出价` });
+            return;
+          }
+        }
+
         // Execute bid in a transaction
         const result = await prisma.$transaction(async (tx) => {
           const auction = await tx.auction.findUnique({

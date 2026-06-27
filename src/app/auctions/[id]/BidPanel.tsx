@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useActionState } from "react";
 import { io, Socket } from "socket.io-client";
-import { placeBid } from "../actions";
 
 interface AuctionData {
   id: string;
@@ -29,13 +27,13 @@ export default function BidPanel({
   const [bidCount, setBidCount] = useState(auction.bidCount);
   const [auctionStatus, setAuctionStatus] = useState(auction.status);
   const [timer, setTimer] = useState(remainingSeconds);
-  // Default custom amount = current highest bid (user can adjust with ±100 steps)
-  const defaultBidAmount = auction.currentHighestBid || auction.vehicle.startingPrice;
-  const [customAmount, setCustomAmount] = useState(String(defaultBidAmount));
+  const [customAmount, setCustomAmount] = useState("");
   const [message, setMessage] = useState("");
-  const [user, setUser] = useState<{ userId?: string }>({});
-  const [bidState, formAction, isPending] = useActionState(placeBid, { error: "" });
-  const [cooldown, setCooldown] = useState(0); // seconds until next bid allowed
+  const [user, setUser] = useState<{ userId?: string; id?: string }>({});
+  const [cooldown, setCooldown] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [winner, setWinner] = useState<{ id: string; nickname: string } | null>(null);
+  const [finalAmount, setFinalAmount] = useState<number | null>(null);
 
   const currentPrice = currentBid || auction.vehicle.startingPrice;
   const minBid = auction.vehicle.minBidIncrement;
@@ -86,10 +84,16 @@ export default function BidPanel({
       if (data.auctionId === auction.id) setTimer(data.remainingSeconds);
     });
 
-    socket.on("auction-ended", (data: { auctionId: string }) => {
+    socket.on("auction-ended", (data: {
+      auctionId: string;
+      winner: { id: string; nickname: string } | null;
+      finalAmount: number | null;
+    }) => {
       if (data.auctionId === auction.id) {
         setAuctionStatus("ended");
         setTimer(0);
+        setWinner(data.winner);
+        setFinalAmount(data.finalAmount);
       }
     });
 
@@ -97,11 +101,14 @@ export default function BidPanel({
       if (data.auctionId === auction.id) {
         setMessage(`✅ 出价成功！¥${data.amount.toLocaleString()}`);
         setCustomAmount("");
+        setIsSubmitting(false);
+        setCooldown(BID_COOLDOWN_SEC);
       }
     });
 
     socket.on("bid-failed", (data: { message: string }) => {
       setMessage(`❌ ${data.message}`);
+      setIsSubmitting(false);
     });
 
     return () => {
@@ -109,15 +116,6 @@ export default function BidPanel({
       socket.disconnect();
     };
   }, [auction.id]);
-
-  // Show server action errors
-  useEffect(() => {
-    if (bidState.error) {
-      setMessage(`❌ ${bidState.error}`);
-      // Start client-side cooldown on error
-      setCooldown(BID_COOLDOWN_SEC);
-    }
-  }, [bidState.error]);
 
   // Countdown cooldown timer
   useEffect(() => {
@@ -149,9 +147,29 @@ export default function BidPanel({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  // Emit bid via Socket.IO
+  const handleQuickBid = (amount: number) => {
+    if (!socketRef.current) return;
+    if (!confirm(`确认出价 ¥${amount.toLocaleString()}？`)) return;
+    setIsSubmitting(true);
+    socketRef.current.emit("place-bid", { auctionId: auction.id, amount });
+  };
+
+  const handleCustomBid = () => {
+    if (!socketRef.current) return;
+    const a = parseInt(customAmount);
+    if (!a || a < currentPrice + minBid) {
+      setMessage(`❌ 出价必须 ≥ ¥${(currentPrice + minBid).toLocaleString()}`);
+      return;
+    }
+    if (!confirm(`确认出价 ¥${a.toLocaleString()}？`)) return;
+    setIsSubmitting(true);
+    socketRef.current.emit("place-bid", { auctionId: auction.id, amount: a });
+  };
+
   const isEnded = auctionStatus === "ended";
   const isActive = auctionStatus === "active";
-  const isFormLocked = isPending || cooldown > 0;
+  const isFormLocked = isSubmitting || cooldown > 0;
 
   const timerDisplay = (
     <div
@@ -171,15 +189,9 @@ export default function BidPanel({
   const quickButtons = quickBids.map((amount, i) => (
     <button
       key={i}
-      type="submit"
-      name="quickAmount"
-      value={amount}
+      type="button"
       disabled={isFormLocked}
-      onClick={(e) => {
-        if (!confirm(`确认出价 ¥${amount.toLocaleString()}？`)) {
-          e.preventDefault();
-        }
-      }}
+      onClick={() => handleQuickBid(amount)}
       className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium py-2 rounded border border-blue-200 transition-colors disabled:opacity-50"
       title={`在当前价基础上加 ¥${quickIncrements[i].toLocaleString()}`}
     >
@@ -191,7 +203,6 @@ export default function BidPanel({
     <div className="flex gap-2">
       <input
         type="number"
-        name="amount"
         value={customAmount}
         onChange={(e) => setCustomAmount(e.target.value)}
         placeholder={`≥ ¥${(currentPrice + minBid).toLocaleString()}`}
@@ -200,22 +211,12 @@ export default function BidPanel({
         step={100}
       />
       <button
-        type="submit"
+        type="button"
         disabled={isFormLocked}
-        onClick={(e) => {
-          const a = parseInt(customAmount);
-          if (!a || a < currentPrice + minBid) {
-            e.preventDefault();
-            setMessage(`❌ 出价必须 ≥ ¥${(currentPrice + minBid).toLocaleString()}`);
-            return;
-          }
-          if (!confirm(`确认出价 ¥${a.toLocaleString()}？`)) {
-            e.preventDefault();
-          }
-        }}
+        onClick={handleCustomBid}
         className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50"
       >
-        {isPending ? "处理中..." : cooldown > 0 ? `${cooldown}s` : "出价"}
+        {isSubmitting ? "处理中..." : cooldown > 0 ? `${cooldown}s` : "出价"}
       </button>
     </div>
   );
@@ -260,27 +261,24 @@ export default function BidPanel({
         </div>
 
         {isActive && (
-          <form action={formAction}>
-            <input type="hidden" name="auctionId" value={auction.id} />
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">{quickButtons}</div>
-              {customInput}
-              {cooldownBar}
-              {messageBar}
-            </div>
-          </form>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">{quickButtons}</div>
+            {customInput}
+            {cooldownBar}
+            {messageBar}
+          </div>
         )}
 
         {isEnded && (
           <div className="text-center py-6 text-gray-500">
             <p className="text-lg">🔒 拍卖已结束</p>
-            {currentWinner && (
+            {((currentWinner) || winner) && (
               <p className="mt-2">
                 成交价：
                 <span className="font-bold text-red-600">
-                  ¥{currentBid?.toLocaleString()}
+                  ¥{(finalAmount || currentBid)?.toLocaleString()}
                 </span>{" "}
-                | 买家：{currentWinner.nickname}
+                | 买家：{(winner || currentWinner)?.nickname}
               </p>
             )}
           </div>
@@ -294,11 +292,7 @@ export default function BidPanel({
 
       {/* ── Mobile: fixed bottom bar ── */}
       {isActive && (
-        <form
-          action={formAction}
-          className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3"
-        >
-          <input type="hidden" name="auctionId" value={auction.id} />
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3">
           {message && (
             <p
               className={`text-xs mb-1 ${
@@ -319,15 +313,9 @@ export default function BidPanel({
             {quickBids.slice(0, 2).map((amount, i) => (
               <button
                 key={i}
-                type="submit"
-                name="quickAmount"
-                value={amount}
+                type="button"
                 disabled={isFormLocked}
-                onClick={(e) => {
-                  if (!confirm(`确认出价 ¥${amount.toLocaleString()}？`)) {
-                    e.preventDefault();
-                  }
-                }}
+                onClick={() => handleQuickBid(amount)}
                 className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium py-2 rounded border border-blue-200 disabled:opacity-50"
               >
                 +¥{quickIncrements[i].toLocaleString()}
@@ -335,7 +323,6 @@ export default function BidPanel({
             ))}
             <input
               type="number"
-              name="amount"
               value={customAmount}
               onChange={(e) => setCustomAmount(e.target.value)}
               placeholder={`≥¥${(currentPrice + minBid).toLocaleString()}`}
@@ -344,25 +331,15 @@ export default function BidPanel({
               step={100}
             />
             <button
-              type="submit"
+              type="button"
               disabled={isFormLocked}
-              onClick={(e) => {
-                const a = parseInt(customAmount);
-                if (!a || a < currentPrice + minBid) {
-                  e.preventDefault();
-                  setMessage(`❌ 最低 ¥${(currentPrice + minBid).toLocaleString()}`);
-                  return;
-                }
-                if (!confirm(`确认 ¥${a.toLocaleString()}？`)) {
-                  e.preventDefault();
-                }
-              }}
+              onClick={handleCustomBid}
               className="bg-green-600 text-white px-2.5 py-2 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
             >
-              {isPending ? "..." : cooldown > 0 ? `${cooldown}s` : "出价"}
+              {isSubmitting ? "..." : cooldown > 0 ? `${cooldown}s` : "出价"}
             </button>
           </div>
-        </form>
+        </div>
       )}
       {!isActive && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3 text-center">
@@ -370,7 +347,7 @@ export default function BidPanel({
             {timerDisplay}
             <span className="text-sm text-gray-500">
               {isEnded
-                ? `成交 ¥${currentBid?.toLocaleString()}`
+                ? `成交 ¥${(finalAmount || currentBid)?.toLocaleString()}`
                 : `${auctionStatus === "pending" ? "待开始" : statusLabel}`}
             </span>
           </div>
