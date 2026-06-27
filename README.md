@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 车辆竞拍系统 (JingPai)
 
-## Getting Started
+英式拍卖 + 软关闭规则，Next.js 16 全栈应用。
 
-First, run the development server:
+## 快速启动
 
 ```bash
+npm install
+npx prisma migrate deploy
+npx tsx prisma/seed.ts
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+访问 `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 默认账号
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 角色 | 用户名 | 密码 |
+|------|--------|------|
+| 管理员 | admin | admin123 |
+| 用户 | user1 | 123456 |
+| 用户 | user2 | 123456 |
 
-## Learn More
+## 外网访问
 
-To learn more about Next.js, take a look at the following resources:
+启动后自动通过 Cloudflare Tunnel 获取外网地址（需将 `cloudflared.exe` 放在项目根目录）。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 技术栈
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Next.js 16 (App Router)
+- Prisma + SQLite
+- Socket.IO 实时通信
+- Tailwind CSS
+- iron-session 认证
 
-## Deploy on Vercel
+## 拍卖规则
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **英式拍卖**：出价必须 ≥ 当前最高价 + 加价幅度
+- **软关闭**：每次出价后倒计时重置，无人出价则到期结束
+- **冷却时间**：同一用户 3 秒内不可连续出价
