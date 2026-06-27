@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import BidPanel from "./BidPanel";
+import BidHistory from "./BidHistory";
+import PriceChart from "./PriceChart";
 
 export const dynamic = "force-dynamic";
 
@@ -37,15 +39,19 @@ export default async function AuctionDetailPage({
   const remainingSeconds =
     auction.status === "active"
       ? Math.max(0, auction.bidResetSeconds - elapsed)
+      : auction.status === "preview"
+      ? Math.max(0, auction.previewSeconds - Math.floor((Date.now() - new Date(auction.startedAt!).getTime()) / 1000))
       : auction.bidResetSeconds;
 
   return (
     <>
-      {/* Auto-refresh for no-JS fallback: updates countdown every 3s */}
-      <noscript>
-        <meta httpEquiv="refresh" content="3" />
-      </noscript>
-      <div className="flex flex-col md:flex-row gap-6">
+      {/* Auto-refresh for no-JS fallback: updates countdown every 3s (only when not ended) */}
+      {auction.status !== "ended" && (
+        <noscript>
+          <meta httpEquiv="refresh" content="3" />
+        </noscript>
+      )}
+      <div className="flex flex-col md:flex-row gap-6 pb-24 md:pb-0">
       {/* Left: Vehicle info */}
       <div className="flex-1 space-y-4">
         <div className="bg-white rounded-lg shadow p-6">
@@ -92,34 +98,29 @@ export default async function AuctionDetailPage({
           )}
         </div>
 
-        {/* Bid history */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="font-semibold mb-3">📋 出价记录</h2>
-          {bidsReversed.length === 0 ? (
-            <p className="text-sm text-gray-400">暂无出价</p>
-          ) : (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {bidsReversed.map((bid) => (
-                <div
-                  key={bid.id}
-                  className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0"
-                >
-                  <span>
-                    {bid.user.nickname}
-                    {bid.user.id === auction.currentWinner?.id && " 🏆"}
-                  </span>
-                  <span className="font-mono font-medium text-red-600">
-                    ¥{bid.amount.toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Bid history (client component for real-time updates) */}
+        <BidHistory
+          auctionId={auction.id}
+          initialBids={JSON.parse(JSON.stringify(bidsReversed))}
+          initialWinner={JSON.parse(JSON.stringify(auction.currentWinner))}
+          startingPrice={auction.vehicle.startingPrice}
+        />
       </div>
 
-      {/* Right: Bid panel (client component) */}
-      <div className="w-full md:w-80 lg:w-96">
+      {/* Right: Price chart + Bid panel */}
+      <div className="w-full md:w-80 lg:w-96 space-y-4">
+        <PriceChart
+          auctionId={auction.id}
+          initialData={bidsReversed.map((b) => ({
+            time: new Date(b.createdAt).toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            price: b.amount,
+            bidder: b.user.nickname,
+          }))}
+        />
         <BidPanel auction={JSON.parse(JSON.stringify(auction))} remainingSeconds={remainingSeconds} />
       </div>
       </div>

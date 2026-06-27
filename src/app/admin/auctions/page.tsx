@@ -37,15 +37,20 @@ export default async function AdminAuctionsPage() {
             {auctions.map((a) => (
               <tr key={a.id} className="hover:bg-gray-50">
                 <td className="p-3">
-                  <div className="font-medium">{a.vehicle.title}</div>
+                  <Link href={`/admin/auctions/${a.id}`} className="font-medium text-blue-600 hover:underline">
+                    {a.vehicle.title}
+                  </Link>
                   <div className="text-xs text-gray-400">{a.vehicle.plateNumber}</div>
                 </td>
                 <td className="p-3">
                   <span className={`text-xs px-2 py-0.5 rounded ${
                     a.status === "active" ? "bg-green-100 text-green-700" :
+                    a.status === "preview" ? "bg-blue-100 text-blue-700" :
                     a.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"
                   }`}>
-                    {a.status === "active" ? "进行中" : a.status === "pending" ? "待开始" : "已结束"}
+                    {a.status === "active" ? "进行中" :
+                     a.status === "preview" ? "📢 预告中" :
+                     a.status === "pending" ? "待开始" : "已结束"}
                   </span>
                 </td>
                 <td className="p-3">
@@ -68,11 +73,6 @@ export default async function AdminAuctionsPage() {
                         ▶ 开始
                       </button>
                     </form>
-                  )}
-                  {a.status === "active" && (
-                    <Link href={`/admin/auctions/${a.id}`} className="text-orange-500 hover:underline text-xs">
-                      ⏱ 进行中
-                    </Link>
                   )}
                   <Link href={`/auctions/${a.id}`} className="text-gray-400 hover:underline text-xs" target="_blank">
                     预览 ↗

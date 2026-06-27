@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import BidNotificationBar from "@/components/BidNotificationBar";
+import NavigationLoader from "@/components/NavigationLoader";
 import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -16,12 +18,15 @@ export default async function RootLayout({
   const user = await getCurrentUser();
 
   return (
-    <html lang="zh-CN" className="h-full antialiased">
+    <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col">
         <Navbar user={user} />
-        <main className="flex-1 container mx-auto max-w-7xl px-4 py-6">
-          {children}
-        </main>
+        <BidNotificationBar />
+        <NavigationLoader>
+          <main className="flex-1 container mx-auto max-w-7xl px-4 py-6">
+            {children}
+          </main>
+        </NavigationLoader>
       </body>
     </html>
   );

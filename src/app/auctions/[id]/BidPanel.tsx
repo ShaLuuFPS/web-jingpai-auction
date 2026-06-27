@@ -9,7 +9,10 @@ interface AuctionData {
   currentHighestBid: number | null;
   currentWinner: { id: string; nickname: string } | null;
   bidResetSeconds: number;
+  previewSeconds: number;
   bidCount: number;
+  autoRelist: boolean;
+  relistDelaySeconds: number;
   vehicle: { startingPrice: number; minBidIncrement: number };
 }
 
@@ -34,6 +37,10 @@ export default function BidPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [winner, setWinner] = useState<{ id: string; nickname: string } | null>(null);
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
+
+  // Relist (restart) countdown state
+  const [relistTimer, setRelistTimer] = useState(0);
+  const relistRef = useRef(false);
 
   const currentPrice = currentBid || auction.vehicle.startingPrice;
   const minBid = auction.vehicle.minBidIncrement;
@@ -88,12 +95,43 @@ export default function BidPanel({
       auctionId: string;
       winner: { id: string; nickname: string } | null;
       finalAmount: number | null;
+      autoRelist?: boolean;
+      relistDelaySeconds?: number;
     }) => {
       if (data.auctionId === auction.id) {
         setAuctionStatus("ended");
         setTimer(0);
         setWinner(data.winner);
         setFinalAmount(data.finalAmount);
+        // Start relist countdown if auto-relist is enabled
+        if (data.autoRelist && data.relistDelaySeconds) {
+          setRelistTimer(data.relistDelaySeconds);
+          relistRef.current = true;
+        }
+      }
+    });
+
+    socket.on("relist-scheduled", (data: {
+      auctionId: string;
+      delaySeconds: number;
+    }) => {
+      if (data.auctionId === auction.id) {
+        setRelistTimer(data.delaySeconds);
+        relistRef.current = true;
+      }
+    });
+
+    socket.on("preview-started", (data: { auctionId: string; previewSeconds: number }) => {
+      if (data.auctionId === auction.id) {
+        setAuctionStatus("preview");
+        setTimer(data.previewSeconds);
+      }
+    });
+
+    socket.on("bidding-started", (data: { auctionId: string; bidResetSeconds: number }) => {
+      if (data.auctionId === auction.id) {
+        setAuctionStatus("active");
+        setTimer(data.bidResetSeconds);
       }
     });
 
@@ -126,13 +164,33 @@ export default function BidPanel({
     return () => clearInterval(interval);
   }, [cooldown]);
 
+  // Relist countdown tick
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!relistRef.current) return;
+      setRelistTimer((t) => {
+        if (t <= 1) {
+          relistRef.current = false;
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Local countdown (visual, kept in sync by socket events)
   useEffect(() => {
-    if (auctionStatus !== "active") return;
+    if (auctionStatus !== "active" && auctionStatus !== "preview") return;
     const interval = setInterval(() => {
       setTimer((t: number) => {
         if (t <= 1) {
-          setAuctionStatus("ended");
+          if (auctionStatus === "preview") {
+            // Preview ending, will be handled by bidding-started event
+            return 0;
+          }
+          // Active: timer reached 0 locally, but wait for server auction-ended event
+          // Don't set ended here — server will confirm
           return 0;
         }
         return t - 1;
@@ -169,20 +227,33 @@ export default function BidPanel({
 
   const isEnded = auctionStatus === "ended";
   const isActive = auctionStatus === "active";
+  const isPreview = auctionStatus === "preview";
+  const isPending = auctionStatus === "pending";
   const isFormLocked = isSubmitting || cooldown > 0;
+  const isSettling = isActive && timer === 0; // Local timer hit 0, waiting for server confirmation
+  const isRelisting = isEnded && relistTimer > 0;
 
   const timerDisplay = (
     <div
       className={`text-lg font-mono font-bold ${
-        timer <= 30 && isActive ? "text-red-500 animate-pulse" : "text-gray-800"
+        isEnded ? (isRelisting ? "text-purple-500" : "text-gray-400") :
+        timer <= 30 && (isActive || isPreview) ? (isActive ? "text-red-500 animate-pulse" : "text-blue-500") : "text-gray-800"
       }`}
     >
-      {isEnded ? "已结束" : isActive ? formatTime(timer) : formatTime(auction.bidResetSeconds)}
+      {isEnded ? (isRelisting ? formatTime(relistTimer) : "已结束") :
+       isSettling ? "结算中..." :
+       isPending ? formatTime(auction.bidResetSeconds) :
+       (isActive || isPreview) ? formatTime(timer) :
+       formatTime(auction.bidResetSeconds)}
     </div>
   );
 
   const statusLabel =
-    auctionStatus === "active" ? "倒计时" : auctionStatus === "pending" ? "待开始" : "已结束";
+    isSettling ? "结算中，请稍候..." :
+    isRelisting ? "🔄 即将重新开始竞价" :
+    isActive ? "竞价倒计时" :
+    isPreview ? "📢 预告倒计时" :
+    isPending ? "待开始" : "已结束";
 
   // ── Shared bid form controls ──
 
@@ -260,7 +331,7 @@ export default function BidPanel({
           <div className="text-xs text-gray-400 mt-1">{bidCount} 次出价</div>
         </div>
 
-        {isActive && (
+        {isActive && !isSettling && (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">{quickButtons}</div>
             {customInput}
@@ -269,21 +340,56 @@ export default function BidPanel({
           </div>
         )}
 
+        {isSettling && (
+          <div className="text-center py-4">
+            <div className="animate-spin w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full mx-auto mb-2" />
+            <p className="text-sm text-gray-500">结算中，请稍候...</p>
+          </div>
+        )}
+
+        {isPreview && (
+          <div className="text-center py-6">
+            <div className="text-blue-600 text-lg font-medium mb-2">📢 准备开拍</div>
+            <p className="text-sm text-gray-500">拍卖即将开始，请耐心等待</p>
+            <p className="text-xs text-gray-400 mt-1">预告结束后自动开放出价</p>
+          </div>
+        )}
+
         {isEnded && (
           <div className="text-center py-6 text-gray-500">
-            <p className="text-lg">🔒 拍卖已结束</p>
-            {((currentWinner) || winner) && (
-              <p className="mt-2">
-                成交价：
-                <span className="font-bold text-red-600">
-                  ¥{(finalAmount || currentBid)?.toLocaleString()}
-                </span>{" "}
-                | 买家：{(winner || currentWinner)?.nickname}
-              </p>
+            {isRelisting ? (
+              <>
+                <p className="text-lg font-semibold text-purple-600 mb-2">🔄 即将重新开始竞价</p>
+                <div className="text-3xl font-mono font-bold text-purple-600 mb-2">
+                  {formatTime(relistTimer)}
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-3 overflow-hidden">
+                  <div
+                    className="h-full bg-purple-500 transition-all duration-1000 ease-linear"
+                    style={{
+                      width: `${((auction.relistDelaySeconds - relistTimer) / (auction.relistDelaySeconds || 60)) * 100}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-sm text-gray-400">结束后自动重新开始拍卖</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg">🔒 拍卖已结束</p>
+                {((currentWinner) || winner) && (
+                  <p className="mt-2">
+                    成交价：
+                    <span className="font-bold text-red-600">
+                      ¥{(finalAmount || currentBid)?.toLocaleString()}
+                    </span>{" "}
+                    | 买家：{(winner || currentWinner)?.nickname}
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
-        {auctionStatus === "pending" && (
+        {isPending && (
           <div className="text-center py-6 text-gray-400">
             <p>⏳ 等待管理员开始拍卖</p>
           </div>
@@ -291,7 +397,7 @@ export default function BidPanel({
       </div>
 
       {/* ── Mobile: fixed bottom bar ── */}
-      {isActive && (
+      {isActive && !isSettling && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3">
           {message && (
             <p
@@ -341,15 +447,45 @@ export default function BidPanel({
           </div>
         </div>
       )}
-      {!isActive && (
+      {!isActive && !isSettling && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3 text-center">
-          <div className="flex items-center justify-between">
-            {timerDisplay}
-            <span className="text-sm text-gray-500">
-              {isEnded
-                ? `成交 ¥${(finalAmount || currentBid)?.toLocaleString()}`
-                : `${auctionStatus === "pending" ? "待开始" : statusLabel}`}
-            </span>
+          {isRelisting ? (
+            <div>
+              <div className="text-sm font-semibold text-purple-600 mb-1">🔄 即将重新开始竞价</div>
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-lg text-purple-600">{formatTime(relistTimer)}</span>
+                <span className="text-xs text-gray-400">结束后自动重新开始</span>
+              </div>
+            </div>
+          ) : isEnded ? (
+            <div className="flex items-center justify-between">
+              {timerDisplay}
+              <span className="text-sm text-gray-500">
+                {winner || currentWinner
+                  ? `成交 ¥${(finalAmount || currentBid)?.toLocaleString()}`
+                  : "拍卖已结束"}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              {timerDisplay}
+              <span className="text-sm text-gray-500">
+                {isPreview
+                  ? "📢 准备开拍"
+                  : isPending
+                  ? "待开始"
+                  : statusLabel}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isSettling && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-10 p-3 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            <span className="text-sm text-gray-500">结算中，请稍候...</span>
           </div>
         </div>
       )}
