@@ -70,7 +70,6 @@ export default function BidHistory({
     };
   }, [auctionId]);
 
-  // Calculate increment relative to previous bid (or starting price for first bid)
   const getIncrement = (index: number, currentAmount: number): number => {
     if (index < bids.length - 1) {
       return currentAmount - bids[index + 1].amount;
@@ -88,45 +87,54 @@ export default function BidHistory({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="font-semibold mb-2">📋 出价记录</h2>
+    <div className="bg-white rounded-2xl border border-gray-100 p-6"
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
+      <h2 className="font-semibold text-base text-gray-900 mb-4">
+        出价记录
+      </h2>
 
       {/* Current leader */}
       {currentWinner && bids.length > 0 ? (
-        <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-          🏆 当前领先：<span className="font-medium">{currentWinner.nickname}</span>
-          <span className="mx-1">·</span>
-          <span className="font-mono font-bold text-red-600">
-            ¥{bids[0].amount.toLocaleString()}
-          </span>
+        <div className="mb-4 p-3 bg-gray-50 rounded-xl text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500">
+              当前领先：<span className="font-medium text-gray-900">{currentWinner.nickname}</span>
+            </span>
+            <span className="font-semibold text-gray-900 tabular-nums">
+              ¥{bids[0].amount.toLocaleString()}
+            </span>
+          </div>
         </div>
       ) : (
-        <p className="text-sm text-gray-400 mb-2">暂无出价</p>
+        <p className="text-sm text-gray-400 mb-4">暂无出价</p>
       )}
 
       {bids.length > 0 && (
-        <div className="space-y-2 max-h-80 overflow-y-auto">
+        <div className="space-y-1 max-h-80 overflow-y-auto">
           {bids.map((bid, i) => {
             const increment = getIncrement(i, bid.amount);
             return (
               <div
                 key={bid.id}
-                className="text-sm py-1.5 border-b border-gray-50 last:border-0"
+                className="flex items-center justify-between text-sm py-2 px-2
+                  rounded-lg hover:bg-gray-50 transition-colors"
               >
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400 text-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs text-gray-400 w-16 shrink-0">
                     {formatTime(bid.createdAt)}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-mono">
-                      +¥{increment.toLocaleString()}
-                    </span>
-                    <span className="font-mono font-medium text-red-600">
-                      ¥{bid.amount.toLocaleString()}
-                    </span>
+                  <span className="text-xs text-gray-500 truncate">
+                    {bid.user.nickname}
                   </span>
                 </div>
-                <span className="text-xs text-gray-500">{bid.user.nickname}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded font-mono">
+                    +¥{increment.toLocaleString()}
+                  </span>
+                  <span className="font-semibold text-gray-900 tabular-nums min-w-[80px] text-right">
+                    ¥{bid.amount.toLocaleString()}
+                  </span>
+                </div>
               </div>
             );
           })}

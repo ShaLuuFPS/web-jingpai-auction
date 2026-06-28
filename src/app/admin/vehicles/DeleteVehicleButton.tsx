@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { deleteVehicle } from "./actions";
+import ConfirmButton from "@/components/ConfirmButton";
 
 export default function DeleteVehicleButton({ vehicleId }: { vehicleId: string }) {
   const [state, formAction, isPending] = useActionState(
@@ -11,20 +12,18 @@ export default function DeleteVehicleButton({ vehicleId }: { vehicleId: string }
 
   return (
     <form action={formAction} className="inline">
-      <button
-        type="submit"
-        disabled={isPending}
-        onClick={(e) => {
-          if (!confirm("确定要删除这辆车吗？此操作不可撤销。")) {
-            e.preventDefault();
-          }
-        }}
-        className="text-red-500 hover:text-red-700 text-sm cursor-pointer disabled:opacity-50"
+      <ConfirmButton
+        title="确定要删除这辆车吗？"
+        description="此操作不可撤销。"
+        confirmText="删除"
+        variant="danger"
+        loading={isPending}
+        className="text-[#ff6b6b] hover:text-[#e55] text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
       >
-        {isPending ? "删除中..." : "🗑 删除车辆"}
-      </button>
+        {isPending ? "删除中..." : "删除车辆"}
+      </ConfirmButton>
       {state.error && (
-        <span className="text-red-500 text-xs ml-2">⚠ {state.error}</span>
+        <span className="text-[#ff6b6b] text-xs ml-2">{state.error}</span>
       )}
     </form>
   );

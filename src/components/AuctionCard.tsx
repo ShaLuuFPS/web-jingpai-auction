@@ -29,7 +29,6 @@ export default function AuctionCard({ auction }: { auction: AuctionCardData }) {
   const previewRef = useRef(status === "preview");
   const [countdownReady, setCountdownReady] = useState(false);
 
-  // Relist (restart) countdown state
   const [relistTimer, setRelistTimer] = useState(0);
   const relistRef = useRef(false);
 
@@ -82,7 +81,6 @@ export default function AuctionCard({ auction }: { auction: AuctionCardData }) {
         previewRef.current = false;
         if (data.finalAmount != null) setCurrentBid(data.finalAmount);
         if (data.winner) setWinner(data.winner);
-        // Start relist countdown if auto-relist is enabled
         if (data.autoRelist && data.relistDelaySeconds) {
           setRelistTimer(data.relistDelaySeconds);
           relistRef.current = true;
@@ -150,69 +148,107 @@ export default function AuctionCard({ auction }: { auction: AuctionCardData }) {
   return (
     <Link
       href={`/auctions/${auction.id}`}
-      className={`bg-white rounded-lg shadow hover:shadow-md transition-shadow p-4 block relative ${
-        isEndedFinal ? "opacity-60" : ""
-      }`}
+      className={`bg-white rounded-2xl border border-gray-100 p-6 block
+        transition-all duration-200 ease-out
+        hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)]
+        ${isEndedFinal ? "opacity-50" : ""}`}
     >
-      <h2 className="font-semibold text-lg mb-2 line-clamp-1">{auction.vehicle.title}</h2>
-      <div className="text-sm text-gray-500 space-y-1">
-        <p>📅 {auction.vehicle.registrationDate} 上牌</p>
-        <p>🛣️ {auction.vehicle.mileage.toLocaleString()} km</p>
-        <p>💰 起拍价 ¥{auction.vehicle.startingPrice.toLocaleString()}</p>
-        {currentBid ? (
-          <p className="text-red-500 font-medium">
-            当前出价 ¥{currentBid.toLocaleString()}
-            {winner && ` (${winner.nickname})`}
-          </p>
-        ) : (
-          <p className="text-gray-400">暂无出价</p>
+      {/* Title + auto-relist badge */}
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="font-semibold text-lg text-gray-900 truncate">
+          {auction.vehicle.title}
+        </h2>
+        {auction.autoRelist && (status === "active" || status === "preview" || status === "pending") && (
+          <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 shrink-0">
+            自动
+          </span>
         )}
-        <p>🔢 {auction.bidCount} 次出价</p>
       </div>
-      <div className="mt-3 flex items-center justify-between">
+
+      {/* Details */}
+      <div className="text-sm text-gray-500 space-y-1.5 mb-4">
+        <div className="flex justify-between">
+          <span>上牌时间</span>
+          <span className="text-gray-700">{auction.vehicle.registrationDate}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>表显里程</span>
+          <span className="text-gray-700">{auction.vehicle.mileage.toLocaleString()} km</span>
+        </div>
+        <div className="flex justify-between">
+          <span>起拍价</span>
+          <span className="text-gray-700">¥{auction.vehicle.startingPrice.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>当前出价</span>
+          {currentBid ? (
+            <span className="font-semibold text-gray-900">
+              ¥{currentBid.toLocaleString()}
+              {winner && (
+                <span className="font-normal text-gray-400 text-xs ml-1">
+                  ({winner.nickname})
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-gray-400">暂无</span>
+          )}
+        </div>
+        <div className="flex justify-between">
+          <span>出价次数</span>
+          <span className="text-gray-700">{auction.bidCount} 次</span>
+        </div>
+      </div>
+
+      {/* Status + Countdown row */}
+      <div className="flex items-center justify-between">
         <span
-          className={`inline-block text-xs px-2 py-1 rounded-full ${
+          className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full ${
             status === "active"
-              ? "bg-green-100 text-green-700"
+              ? "bg-[#eef2ff] text-[#635bff]"
               : status === "preview"
-              ? "bg-blue-100 text-blue-700"
-              : status === "ended"
-              ? "bg-gray-100 text-gray-500"
-              : "bg-yellow-100 text-yellow-700"
+                ? "bg-gray-100 text-gray-500"
+                : status === "ended"
+                  ? "bg-gray-100 text-gray-400"
+                  : "bg-gray-100 text-gray-500"
           }`}
         >
-          {status === "active" ? "🔥 竞拍中" :
-           status === "preview" ? "📢 预告中" :
-           status === "ended" && isRelisting ? "🔄 即将重新开始" :
-           status === "ended" ? "已结束" :
-           "⏳ 待开始"}
+          {status === "active"
+            ? "竞拍中"
+            : status === "preview"
+              ? "预告中"
+              : status === "ended" && isRelisting
+                ? "即将重新开始"
+                : status === "ended"
+                  ? "已结束"
+                  : "待开始"}
         </span>
 
-        {/* Preview countdown — only shown during preview */}
+        {/* Preview countdown */}
         {status === "preview" && (
-          <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-sm md:text-base">
-            {countdownReady ? formatTime(previewTimer) : "正在加载..."}
+          <span className="font-mono font-semibold text-sm text-[#635bff] bg-[#eef2ff] px-2.5 py-0.5 rounded-md">
+            {countdownReady ? formatTime(previewTimer) : "加载中..."}
           </span>
         )}
 
-        {/* Relist countdown — shown when auction ended and auto-relist is counting down */}
+        {/* Relist countdown */}
         {isRelisting && (
-          <span className="font-mono font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded text-sm md:text-base animate-pulse">
+          <span className="font-mono font-semibold text-sm text-[#635bff] bg-[#eef2ff] px-2.5 py-0.5 rounded-md animate-pulse">
             {formatTime(relistTimer)}
           </span>
         )}
 
-        {/* Relist just finished */}
+        {/* Relist finished hint — auction should now be pending */}
         {status === "ended" && relistTimer === 0 && relistRef.current === false && auction.autoRelist && (
-          <span className="text-xs text-purple-500">刷新查看新场次</span>
+          <span className="text-xs text-gray-400">等待重新开始中…</span>
         )}
       </div>
 
       {/* Relist progress bar */}
       {isRelisting && (
-        <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div className="mt-3 w-full bg-gray-100 rounded-full h-1 overflow-hidden">
           <div
-            className="h-full bg-purple-500 transition-all duration-1000 ease-linear"
+            className="h-full bg-[#635bff] transition-all duration-1000 ease-linear"
             style={{
               width: `${((auction.relistDelaySeconds - relistTimer) / auction.relistDelaySeconds) * 100}%`,
             }}

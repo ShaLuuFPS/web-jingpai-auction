@@ -30,7 +30,6 @@ export default function AdminLiveAuctionHeader({
   const [currentBid, setCurrentBid] = useState(initialCurrentBid);
   const [winner, setWinner] = useState(initialWinner);
   const [bidCount, setBidCount] = useState(initialBidCount);
-  // Two countdowns: preview goes first, then bidding
   const [previewTimer, setPreviewTimer] = useState(
     initialStatus === "pending" ? initialPreviewSeconds : initialStatus === "preview" ? initialPreviewSeconds : 0
   );
@@ -101,9 +100,8 @@ export default function AdminLiveAuctionHeader({
         setStatus("active");
         setPreviewTimer(0);
         setBidTimer(data.bidResetSeconds);
-        isPreviewRef.current = true; // for timer ticks below
-        isActiveRef.current = true;
         isPreviewRef.current = false;
+        isActiveRef.current = true;
       }
     });
 
@@ -136,10 +134,7 @@ export default function AdminLiveAuctionHeader({
     const interval = setInterval(() => {
       if (!isPreviewRef.current) return;
       setPreviewTimer((t) => {
-        if (t <= 1) {
-          // Will be handled by bidding-started event from server
-          return 0;
-        }
+        if (t <= 1) return 0;
         return t - 1;
       });
     }, 1000);
@@ -171,26 +166,31 @@ export default function AdminLiveAuctionHeader({
     status === "active" ? "进行中" :
     status === "preview" ? "预告中" :
     status === "pending" ? "待开始" : "已结束";
-  const statusColor =
-    status === "active" ? "bg-green-100 text-green-700" :
-    status === "preview" ? "bg-blue-100 text-blue-700" :
-    status === "pending" ? "bg-yellow-100 text-yellow-700" :
-    "bg-gray-100 text-gray-500";
+
+  const statusClass =
+    status === "active" ? "bg-[#eef2ff] text-[#635bff]" :
+    status === "preview" ? "bg-gray-100 text-gray-500" :
+    status === "pending" ? "bg-gray-100 text-gray-500" :
+    "bg-gray-100 text-gray-400";
 
   const isLowBid = bidTimer <= 30 && bidTimer > 0 && status === "active";
   const displayWinner = endedWinner || winner;
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 mb-4">
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6"
+      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <h2 className="text-xl font-semibold mb-2">
-            <a href={`/auctions/${auctionId}`} target="_blank" className="text-blue-600 hover:underline">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <a href={`/auctions/${auctionId}`} target="_blank"
+              className="text-[#635bff] hover:text-[#4f49cc] transition-colors">
               {vehicleTitle}
             </a>
           </h2>
           <div className="flex items-center gap-3 text-sm text-gray-500 mb-3">
-            <span className={`text-xs px-2 py-0.5 rounded ${statusColor}`}>{statusLabel}</span>
+            <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full ${statusClass}`}>
+              {statusLabel}
+            </span>
             <span>起拍价：¥{startingPrice.toLocaleString()}</span>
             <span>
               当前最高：{currentBid ? `¥${currentBid.toLocaleString()}` : "无"}
@@ -198,14 +198,14 @@ export default function AdminLiveAuctionHeader({
             <span>{bidCount} 次出价</span>
           </div>
           {status === "ended" && displayWinner && (
-            <div className="text-sm">
-              🏆 最终买家：
-              <span className="font-medium">{displayWinner.nickname}</span>
+            <div className="text-sm text-gray-500">
+              最终买家：
+              <span className="font-medium text-gray-900">{displayWinner.nickname}</span>
               {endedFinalAmount && (
                 <>
-                  <span className="mx-1">·</span>
+                  <span className="mx-1.5 text-gray-300">·</span>
                   成交价：
-                  <span className="font-mono font-bold text-red-600">
+                  <span className="font-semibold text-gray-900 tabular-nums">
                     ¥{endedFinalAmount.toLocaleString()}
                   </span>
                 </>
@@ -215,34 +215,34 @@ export default function AdminLiveAuctionHeader({
         </div>
 
         {/* Dual countdown display */}
-        <div className="flex gap-6 text-center">
+        <div className="flex gap-6 text-center shrink-0">
           {/* Preview countdown */}
           <div>
             <div className="text-xs text-gray-400 mb-1">
-              {status === "preview" ? "📢 预告倒计时" : "预告"}
+              {status === "preview" ? "预告倒计时" : "预告"}
             </div>
-            <div className={`text-2xl font-mono font-bold ${
-              status === "preview" ? "text-blue-600" : "text-gray-300"
+            <div className={`text-2xl font-semibold font-mono tabular-nums ${
+              status === "preview" ? "text-[#635bff]" : "text-gray-300"
             }`}>
-              {status === "pending" ? `${Math.floor(initialPreviewSeconds / 60)}:${(initialPreviewSeconds % 60).toString().padStart(2, "0")}` :
+              {status === "pending" ? formatTime(initialPreviewSeconds) :
                status === "ended" ? "0:00" :
                formatTime(previewTimer)}
             </div>
             {status === "pending" && <div className="text-xs text-gray-300 mt-0.5">未开始</div>}
           </div>
 
-          <div className="text-gray-300 text-lg self-center">→</div>
+          <div className="text-gray-300 text-lg self-center">&rarr;</div>
 
           {/* Bidding countdown */}
           <div>
             <div className="text-xs text-gray-400 mb-1">
-              {status === "active" ? "⏱ 竞价倒计时" : "竞价"}
+              {status === "active" ? "竞价倒计时" : "竞价"}
             </div>
-            <div className={`text-2xl font-mono font-bold ${
-              isLowBid ? "text-red-500 animate-pulse" :
-              status === "active" ? "text-gray-800" : "text-gray-300"
+            <div className={`text-2xl font-semibold font-mono tabular-nums ${
+              isLowBid ? "text-[#ff6b6b] animate-pulse" :
+              status === "active" ? "text-gray-900" : "text-gray-300"
             }`}>
-              {status === "pending" ? `${Math.floor(initialBidSeconds / 60)}:${(initialBidSeconds % 60).toString().padStart(2, "0")}` :
+              {status === "pending" ? formatTime(initialBidSeconds) :
                formatTime(bidTimer)}
             </div>
             {status === "pending" && <div className="text-xs text-gray-300 mt-0.5">未开始</div>}

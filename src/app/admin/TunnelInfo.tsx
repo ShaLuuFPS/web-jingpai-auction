@@ -22,30 +22,26 @@ export default function TunnelInfo() {
     return () => { cancelled = true; };
   }, []);
 
-  // ── Loading: tunnel still establishing ──
   if (loading) {
     return (
-      <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full border-2 border-yellow-300 border-t-yellow-600 animate-spin" />
-          <span className="text-yellow-700 text-sm">
-            🌐 正在建立隧道连接...
-          </span>
+          <div className="w-4 h-4 rounded-full border-2 border-amber-300 border-t-amber-600 animate-spin" />
+          <span className="text-amber-700 text-sm">正在建立隧道连接...</span>
         </div>
-        <p className="text-xs text-yellow-500 mt-1">
+        <p className="text-xs text-amber-500 mt-1">
           cloudflared 正在获取外网地址，请稍候
         </p>
       </div>
     );
   }
 
-  // ── Ready: tunnel URL available ──
   if (tunnelUrl) {
     return (
-      <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+      <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4">
         <div className="flex items-center gap-2">
-          <span className="text-green-700 font-medium text-sm">🌐 外网访问地址：</span>
-          <code className="text-sm bg-white px-3 py-1 rounded border border-green-200 text-green-800">
+          <span className="text-green-700 font-medium text-sm">外网访问地址：</span>
+          <code className="text-sm bg-white px-3 py-1 rounded-lg border border-green-200 text-green-800">
             {tunnelUrl}
           </code>
           <button
@@ -75,11 +71,10 @@ export default function TunnelInfo() {
     );
   }
 
-  // ── Not available ──
   return (
-    <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-      <span className="text-red-600 text-sm">
-        ⚠️ 未检测到 cloudflared，外网访问不可用
+    <div className="mt-6 bg-red-50 border border-[#ff6b6b]/30 rounded-xl p-4">
+      <span className="text-[#ff6b6b] text-sm">
+        未检测到 cloudflared，外网访问不可用
       </span>
     </div>
   );

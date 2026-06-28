@@ -3,6 +3,7 @@
 import { requireAdmin } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 export async function createAuction(prevState: { error?: string }, formData: FormData) {
   try {
@@ -38,16 +39,7 @@ export async function createAuction(prevState: { error?: string }, formData: For
 
   await prisma.vehicle.update({
     where: { id: vehicleId },
-    data: {
-      status: "in_auction",
-      ...(autoRelist
-        ? {
-            autoAuction: true,
-            previewSeconds: isNaN(previewSeconds) ? 120 : previewSeconds,
-            relistDelaySeconds: isNaN(relistDelaySeconds) ? 60 : relistDelaySeconds,
-          }
-        : {}),
-    },
+    data: { status: "in_auction" },
   });
 
   redirect(`/admin/auctions/${auction.id}`);
@@ -90,8 +82,18 @@ export async function auctionAction(prevState: { error?: string }, formData: For
     if (auction.status !== "preview" && auction.status !== "active") {
       return { error: "只能结束预告中或进行中的拍卖" };
     }
-    // Call the server-side endAuction to handle timers + autoRelist
+    // Manual end: disable autoRelist so the auction stays ended
+    // (otherwise endAuction will immediately schedule a new one)
     const g = globalThis as any;
+    await prisma.auction.update({
+      where: { id: auctionId },
+      data: { autoRelist: false },
+    });
+    await prisma.vehicle.update({
+      where: { id: auction.vehicleId },
+      data: { autoAuction: false },
+    });
+
     if (g.__endAuction) {
       await g.__endAuction(auctionId);
     } else {
@@ -278,22 +280,80 @@ export async function toggleAutoRelist(prevState: { error?: string; success?: st
     data: { autoRelist: enabled },
   });
 
-  // Also sync to vehicle
-  await prisma.vehicle.update({
-    where: { id: auction.vehicleId },
-    data: {
-      autoAuction: enabled,
-      ...(enabled ? {
-        previewSeconds: auction.previewSeconds,
-        relistDelaySeconds: auction.relistDelaySeconds,
-      } : {}),
-    },
-  });
-
-  return { success: enabled ? "自动拍卖已启用" : "自动拍卖已关闭" };
+  return { success: enabled ? "自动重新拍卖已启用" : "自动重新拍卖已关闭" };
 }
 
-/** Create a new auction with the same vehicle (vehicle must be available first) */
+/** Delete an auction and all its bids. */
+export async function deleteAuction(prevState: { error?: string }, formData: FormData) {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "未授权" };
+  }
+
+  const auctionId = formData.get("auctionId") as string;
+  if (!auctionId) return { error: "缺少拍卖ID" };
+
+  const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+  if (!auction) return { error: "拍卖不存在" };
+
+  // Stop any server-side timer
+  const g = globalThis as any;
+  if (g.__stopAuctionTimer) g.__stopAuctionTimer(auctionId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.bid.deleteMany({ where: { auctionId } });
+    await tx.auction.delete({ where: { id: auctionId } });
+    await tx.vehicle.update({
+      where: { id: auction.vehicleId },
+      data: { status: "available" },
+    });
+  });
+
+  revalidatePath("/admin/auctions");
+  return { error: "" };
+}
+
+/** Delete all ended auctions and their bids. Returns count. */
+export async function clearEndedAuctions(prevState: { error?: string; count?: number }, formData: FormData) {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "未授权" };
+  }
+
+  const endedAuctions = await prisma.auction.findMany({
+    where: { status: "ended" },
+    select: { id: true, vehicleId: true },
+  });
+
+  if (endedAuctions.length === 0) {
+    return { error: "没有已结束的拍卖" };
+  }
+
+  const auctionIds = endedAuctions.map((a) => a.id);
+
+  // Stop any lingering timers
+  const g = globalThis as any;
+  for (const id of auctionIds) {
+    if (g.__stopAuctionTimer) g.__stopAuctionTimer(id);
+  }
+
+  // Delete all bids for ended auctions, delete auctions, reset vehicles
+  await prisma.$transaction(async (tx) => {
+    await tx.bid.deleteMany({ where: { auctionId: { in: auctionIds } } });
+    await tx.auction.deleteMany({ where: { id: { in: auctionIds } } });
+    for (const a of endedAuctions) {
+      await tx.vehicle.update({
+        where: { id: a.vehicleId },
+        data: { status: "available" },
+      });
+    }
+  });
+
+  revalidatePath("/admin/auctions");
+  return { count: endedAuctions.length };
+}
 export async function relistAuction(prevState: { error?: string }, formData: FormData) {
   try {
     await requireAdmin();

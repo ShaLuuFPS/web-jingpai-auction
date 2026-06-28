@@ -10,21 +10,28 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   const links = [
-    { href: "/admin", label: "📊 仪表盘" },
-    { href: "/admin/vehicles", label: "🚗 车辆管理" },
-    { href: "/admin/auctions", label: "🔨 拍卖管理" },
-    { href: "/admin/users", label: "👥 账户管理" },
+    { href: "/admin", label: "仪表盘" },
+    { href: "/admin/vehicles", label: "车辆管理" },
+    { href: "/admin/auctions", label: "拍卖管理" },
+    { href: "/admin/users", label: "账户管理" },
   ];
 
   return (
     <div className="flex gap-6">
       <aside className="hidden md:block w-48 shrink-0">
-        <nav className="bg-white rounded-lg shadow p-4 sticky top-20">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase mb-3">管理后台</h2>
-          <ul className="space-y-1">
+        <nav className="bg-white rounded-2xl border border-gray-100 p-4 sticky top-20"
+          style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
+          <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3 px-2">
+            管理后台
+          </h2>
+          <ul className="space-y-0.5">
             {links.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="block px-3 py-2 rounded text-sm hover:bg-gray-100 transition-colors">
+                <Link
+                  href={l.href}
+                  className="block px-3 py-2 rounded-lg text-sm text-gray-600
+                    hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
                   {l.label}
                 </Link>
               </li>

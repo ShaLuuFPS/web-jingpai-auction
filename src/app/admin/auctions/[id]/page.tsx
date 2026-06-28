@@ -18,7 +18,6 @@ export default async function AdminAuctionDetailPage({ params }: { params: Promi
   });
   if (!auction) notFound();
 
-  // Calculate remaining countdown seconds (server-side)
   const lastBidTime = auction.bids[0]?.createdAt || auction.startedAt;
   const elapsed = lastBidTime
     ? Math.floor((Date.now() - new Date(lastBidTime).getTime()) / 1000)
@@ -28,7 +27,6 @@ export default async function AdminAuctionDetailPage({ params }: { params: Promi
       ? Math.max(0, auction.bidResetSeconds - elapsed)
       : auction.bidResetSeconds;
 
-  // Preview remaining seconds
   const previewElapsed = auction.startedAt
     ? Math.floor((Date.now() - new Date(auction.startedAt).getTime()) / 1000)
     : 0;
@@ -39,14 +37,15 @@ export default async function AdminAuctionDetailPage({ params }: { params: Promi
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">🔨 管理拍卖</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight">管理拍卖</h1>
         <Link
           href={`/auctions/${auction.id}`}
           target="_blank"
-          className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
+          className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium
+            hover:border-[#635bff] hover:text-[#635bff] transition-all duration-150"
         >
-          👁 查看拍卖页面 ↗
+          查看拍卖页面
         </Link>
       </div>
 
@@ -71,17 +70,23 @@ export default async function AdminAuctionDetailPage({ params }: { params: Promi
         autoRelist={auction.autoRelist}
       />
 
-      <div className="bg-white rounded-lg shadow p-6 mt-4">
-        <h3 className="font-semibold mb-3">出价记录</h3>
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6"
+        style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
+        <h3 className="font-semibold text-base text-gray-900 mb-4">出价记录</h3>
         {auction.bids.length === 0 ? (
           <p className="text-sm text-gray-400">暂无出价</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {auction.bids.map((b) => (
-              <div key={b.id} className="flex justify-between text-sm py-1 border-b border-gray-50 last:border-0">
-                <span>{b.user.nickname}</span>
-                <span className="font-mono text-red-600">¥{b.amount.toLocaleString()}</span>
-                <span className="text-gray-400 text-xs">{new Date(b.createdAt).toLocaleTimeString("zh-CN")}</span>
+              <div key={b.id}
+                className="flex items-center justify-between text-sm py-2 px-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <span className="text-gray-600 min-w-0 truncate">{b.user.nickname}</span>
+                <span className="font-semibold text-gray-900 tabular-nums shrink-0 mx-4">
+                  ¥{b.amount.toLocaleString()}
+                </span>
+                <span className="text-xs text-gray-400 shrink-0">
+                  {new Date(b.createdAt).toLocaleTimeString("zh-CN")}
+                </span>
               </div>
             ))}
           </div>

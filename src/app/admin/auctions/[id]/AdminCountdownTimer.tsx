@@ -47,7 +47,7 @@ export default function AdminCountdownTimer({
     };
   }, [auctionId]);
 
-  // Local countdown — only runs while auction is active
+  // Local countdown
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isActiveRef.current) return;
@@ -71,7 +71,9 @@ export default function AdminCountdownTimer({
   const isLow = timer <= 30 && timer > 0 && isActiveRef.current;
 
   return (
-    <div className={`text-3xl font-mono font-bold ${isLow ? "text-red-500 animate-pulse" : "text-gray-800"}`}>
+    <div className={`text-3xl font-semibold font-mono tabular-nums ${
+      isLow ? "text-[#ff6b6b] animate-pulse" : "text-gray-900"
+    }`}>
       {timer > 0 ? formatTime(timer) : "00:00"}
     </div>
   );

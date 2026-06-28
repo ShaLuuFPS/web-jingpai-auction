@@ -12,7 +12,7 @@ export default async function NewAuctionPage() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold mb-4">🔨 创建拍卖</h1>
+      <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight mb-8">创建拍卖</h1>
       <NewAuctionForm vehicles={vehicles} />
     </div>
   );

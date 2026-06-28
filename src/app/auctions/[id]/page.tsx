@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import BidPanel from "./BidPanel";
 import BidHistory from "./BidHistory";
 import PriceChart from "./PriceChart";
+import ImageCarousel from "@/components/ImageCarousel";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,6 @@ export default async function AuctionDetailPage({
 
   const bidsReversed = [...auction.bids].reverse();
 
-  // Calculate actual remaining countdown seconds (server-side)
   const lastBidTime =
     auction.bids[0]?.createdAt || auction.startedAt;
   const elapsed = lastBidTime
@@ -40,89 +40,96 @@ export default async function AuctionDetailPage({
     auction.status === "active"
       ? Math.max(0, auction.bidResetSeconds - elapsed)
       : auction.status === "preview"
-      ? Math.max(0, auction.previewSeconds - Math.floor((Date.now() - new Date(auction.startedAt!).getTime()) / 1000))
-      : auction.bidResetSeconds;
+        ? Math.max(0, auction.previewSeconds - Math.floor((Date.now() - new Date(auction.startedAt!).getTime()) / 1000))
+        : auction.bidResetSeconds;
 
   return (
     <>
-      {/* Auto-refresh for no-JS fallback: updates countdown every 3s (only when not ended) */}
       {auction.status !== "ended" && (
         <noscript>
           <meta httpEquiv="refresh" content="3" />
         </noscript>
       )}
       <div className="flex flex-col md:flex-row gap-6 pb-24 md:pb-0">
-      {/* Left: Vehicle info */}
-      <div className="flex-1 space-y-4">
-        <div className="bg-white rounded-lg shadow p-6">
-          {auction.vehicle.images.length > 0 && (
-            <div className="mb-4 flex gap-2 overflow-x-auto">
-              {auction.vehicle.images.map((img) => (
-                <img
-                  key={img.id}
-                  src={img.filePath}
-                  alt={auction.vehicle.title}
-                  className="w-full max-w-md h-64 object-cover rounded"
-                />
-              ))}
+        {/* Left: Vehicle info + bid history */}
+        <div className="flex-1 space-y-6">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6"
+            style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}>
+            {/* Vehicle images */}
+            <ImageCarousel
+              images={auction.vehicle.images}
+              alt={auction.vehicle.title}
+            />
+            {auction.vehicle.images.length === 0 && (
+              <div className="mb-5 w-full h-48 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
+                <div className="text-center">
+                  <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  暂无图片
+                </div>
+              </div>
+            )}
+
+            {/* Title */}
+            <h1 className="text-xl font-semibold text-gray-900 mb-4">
+              {auction.vehicle.title}
+            </h1>
+
+            {/* Info grid */}
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">车牌号</div>
+                <div className="font-medium text-gray-900">{auction.vehicle.plateNumber}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">表显里程</div>
+                <div className="font-medium text-gray-900">{auction.vehicle.mileage.toLocaleString()} km</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">上牌时间</div>
+                <div className="font-medium text-gray-900">{auction.vehicle.registrationDate}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-0.5">加价幅度</div>
+                <div className="font-medium text-gray-900">¥{auction.vehicle.minBidIncrement.toLocaleString()}</div>
+              </div>
             </div>
-          )}
-          {auction.vehicle.images.length === 0 && (
-            <div className="mb-4 w-full h-48 bg-gray-100 rounded flex items-center justify-center text-gray-400">
-              🚗 暂无图片
-            </div>
-          )}
-          <h1 className="text-xl font-bold mb-3">{auction.vehicle.title}</h1>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-gray-400">车牌号</span>
-              <p className="font-medium">{auction.vehicle.plateNumber}</p>
-            </div>
-            <div>
-              <span className="text-gray-400">表显里程</span>
-              <p className="font-medium">{auction.vehicle.mileage.toLocaleString()} km</p>
-            </div>
-            <div>
-              <span className="text-gray-400">上牌时间</span>
-              <p className="font-medium">{auction.vehicle.registrationDate}</p>
-            </div>
-            <div>
-              <span className="text-gray-400">加价幅度</span>
-              <p className="font-medium">¥{auction.vehicle.minBidIncrement.toLocaleString()}</p>
-            </div>
+
+            {/* Description */}
+            {auction.vehicle.description && (
+              <div className="mt-5 pt-5 border-t border-gray-100 text-sm text-gray-500 leading-relaxed">
+                {auction.vehicle.description}
+              </div>
+            )}
           </div>
-          {auction.vehicle.description && (
-            <div className="mt-4 pt-4 border-t text-sm text-gray-600">
-              {auction.vehicle.description}
-            </div>
-          )}
+
+          {/* Bid history */}
+          <BidHistory
+            auctionId={auction.id}
+            initialBids={JSON.parse(JSON.stringify(bidsReversed))}
+            initialWinner={JSON.parse(JSON.stringify(auction.currentWinner))}
+            startingPrice={auction.vehicle.startingPrice}
+          />
         </div>
 
-        {/* Bid history (client component for real-time updates) */}
-        <BidHistory
-          auctionId={auction.id}
-          initialBids={JSON.parse(JSON.stringify(bidsReversed))}
-          initialWinner={JSON.parse(JSON.stringify(auction.currentWinner))}
-          startingPrice={auction.vehicle.startingPrice}
-        />
-      </div>
-
-      {/* Right: Price chart + Bid panel */}
-      <div className="w-full md:w-80 lg:w-96 space-y-4">
-        <PriceChart
-          auctionId={auction.id}
-          initialData={bidsReversed.map((b) => ({
-            time: new Date(b.createdAt).toLocaleTimeString("zh-CN", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            }),
-            price: b.amount,
-            bidder: b.user.nickname,
-          }))}
-        />
-        <BidPanel auction={JSON.parse(JSON.stringify(auction))} remainingSeconds={remainingSeconds} />
-      </div>
+        {/* Right: Price chart + Bid panel */}
+        <div className="w-full md:w-80 lg:w-96 space-y-4">
+          <PriceChart
+            auctionId={auction.id}
+            initialData={bidsReversed.map((b) => ({
+              time: new Date(b.createdAt).toLocaleTimeString("zh-CN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              }),
+              price: b.amount,
+              bidder: b.user.nickname,
+            }))}
+          />
+          <BidPanel auction={JSON.parse(JSON.stringify(auction))} remainingSeconds={remainingSeconds} />
+        </div>
       </div>
     </>
   );

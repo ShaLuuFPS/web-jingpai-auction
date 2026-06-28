@@ -16,12 +16,12 @@ export default async function EditVehiclePage({ params }: { params: Promise<{ id
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold mb-4">✏️ 编辑车辆</h1>
+      <h1 className="text-[28px] font-semibold text-gray-900 tracking-tight mb-8">编辑车辆</h1>
       <EditVehicleForm vehicle={vehicle} />
       <div className="mt-6">
         <ImageUpload vehicleId={vehicle.id} images={vehicle.images} />
       </div>
-      <div className="mt-6 pt-4 border-t">
+      <div className="mt-6 pt-5 border-t border-gray-100">
         <DeleteVehicleButton vehicleId={vehicle.id} />
       </div>
     </div>

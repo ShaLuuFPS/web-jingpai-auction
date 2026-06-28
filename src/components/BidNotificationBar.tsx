@@ -36,7 +36,6 @@ export default function BidNotificationBar() {
       }) => {
         clearTimer();
         setDismissed(false);
-        // Briefly hide to force re-mount, then show with new key for fresh animation
         setVisible(false);
         setMessage({
           nickname: data.nickname,
@@ -45,10 +44,8 @@ export default function BidNotificationBar() {
           auctionId: data.auctionId,
         });
         setNotifKey((k) => k + 1);
-        // A micro-tick later show the bar so the marquee re-mounts from the right
         setTimeout(() => setVisible(true), 0);
 
-        // Auto-hide after 10 seconds
         timerRef.current = setTimeout(() => {
           setVisible(false);
         }, 10000);
@@ -70,25 +67,38 @@ export default function BidNotificationBar() {
   const show = visible && message && !dismissed;
 
   return (
-    <div className={`h-9 overflow-hidden ${show ? "border-b border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50" : ""}`}>
+    <div
+      className={`h-9 overflow-hidden ${
+        show ? "bg-[#eef2ff] border-b border-[#635bff]/20" : ""
+      }`}
+    >
       <div className="container mx-auto max-w-7xl px-4 relative h-full">
         {show ? (
           <>
             <Link
               href={`/auctions/${message.auctionId}`}
-              className="block py-2 text-sm text-orange-700 hover:text-orange-900"
+              className="block py-2 text-sm text-[#635bff] hover:text-[#4f49cc]"
             >
               <div className="overflow-hidden whitespace-nowrap">
-                <span key={notifKey} className="inline-block animate-marquee">
-                  🔥{" "}
-                  <span className="font-medium">{message.nickname}</span>{" "}
+                <span
+                  key={notifKey}
+                  className="inline-block animate-marquee"
+                >
+                  <svg
+                    className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M13 2L4.093 20.583c-.462.967.197 2.096 1.221 2.096h13.372c1.024 0 1.683-1.13 1.221-2.096L13 2z" />
+                  </svg>
+                  <span className="font-semibold">{message.nickname}</span>{" "}
                   在{" "}
                   <span className="font-medium">{message.vehicleTitle}</span>{" "}
-                  出价了{" "}
-                  <span className="font-mono font-bold text-red-600">
+                  出价{" "}
+                  <span className="font-semibold text-gray-900">
                     ¥{message.amount.toLocaleString()}
                   </span>
-                  ！点我查看详情
+                  {" "}· 点击查看
                 </span>
               </div>
             </Link>
@@ -98,10 +108,10 @@ export default function BidNotificationBar() {
                 e.stopPropagation();
                 handleClose();
               }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-orange-400 hover:text-orange-600 text-lg leading-none px-2"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#635bff]/50 hover:text-[#635bff] text-base leading-none px-1"
               aria-label="关闭"
             >
-              ✕
+              ×
             </button>
           </>
         ) : null}

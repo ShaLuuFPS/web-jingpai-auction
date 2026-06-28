@@ -139,28 +139,8 @@ function resetAuctionTimer(auctionId, resetSeconds, io) {
   startAuctionTimer(auctionId, resetSeconds, io);
 }
 
-/** Restore timers and auto-create auctions on boot */
+/** Restore timers on boot */
 async function startAuctionTimers(io) {
-  // ── Auto-create auctions for vehicles with autoAuction=true ──
-  const autoVehicles = await prisma.vehicle.findMany({ where: { autoAuction: true } });
-  for (const v of autoVehicles) {
-    const existing = await prisma.auction.findFirst({
-      where: { vehicleId: v.id, status: { in: ["pending", "preview", "active"] } },
-    });
-    if (!existing) {
-      const newAuction = await autoCreateAuction(v.id, v.previewSeconds, 120);
-      if (newAuction) {
-        await prisma.auction.update({
-          where: { id: newAuction.id },
-          data: { status: "preview", startedAt: new Date() },
-        });
-        io.emit("preview-started", { auctionId: newAuction.id, previewSeconds: v.previewSeconds });
-        startPreviewTimer(newAuction.id, v.previewSeconds, io);
-        console.log(`[AutoAuction] Created & started auction for "${v.title}"`);
-      }
-    }
-  }
-
   // ── Restore preview timers ──
   const previewAuctions = await prisma.auction.findMany({ where: { status: "preview" } });
   for (const a of previewAuctions) {
@@ -218,18 +198,10 @@ async function startAuctionTimers(io) {
     const elapsed = Math.floor((Date.now() - new Date(a.endedAt).getTime()) / 1000);
     const delay = a.relistDelaySeconds;
     if (elapsed >= delay) {
-      // Delay already passed — create immediately
-      const newAuction = await autoCreateAuction(a.vehicleId, a.previewSeconds, a.bidResetSeconds);
-      if (newAuction) {
-        await prisma.auction.update({
-          where: { id: newAuction.id },
-          data: { status: "preview", startedAt: new Date() },
-        });
-        io.emit("preview-started", { auctionId: newAuction.id, previewSeconds: a.previewSeconds });
-        startPreviewTimer(newAuction.id, a.previewSeconds, io);
-      }
+      // Delay already passed — restart immediately (reset to pending)
+      await restartAuctionServerSide(a.id, io);
     } else {
-      scheduleRelist(a.vehicleId, a.previewSeconds, a.bidResetSeconds, delay - elapsed, io);
+      scheduleRestart(a.id, delay - elapsed, io);
     }
   }
 
@@ -297,10 +269,10 @@ async function endAuction(auctionId, io) {
     });
     console.log(`[Auction] ${auctionId} ended (${wasPreview ? 'preview' : 'active'})`);
 
-    // Auto-relist: schedule new auction after delay
+    // Auto-relist: schedule restart of current auction after delay
     if (ended.autoRelist) {
-      scheduleRelist(ended.vehicleId, ended.previewSeconds, ended.bidResetSeconds, ended.relistDelaySeconds, io);
-      // Also emit relist-scheduled to the old auction room so the card can show countdown
+      scheduleRestart(auctionId, ended.relistDelaySeconds, io);
+      // Emit relist-scheduled so the auction card can show countdown
       io.to(auctionId).emit('relist-scheduled', {
         auctionId,
         delaySeconds: ended.relistDelaySeconds,
@@ -313,67 +285,62 @@ async function endAuction(auctionId, io) {
 }
 
 /**
- * Schedule a new auction after relistDelaySeconds, with auto-start.
+ * Restart an auction server-side: clear bids, reset, and auto-start preview.
+ * Used by auto-relist when the delay timer fires.
  */
-function scheduleRelist(vehicleId, previewSeconds, bidResetSeconds, delaySeconds, io) {
-  const timerId = `relist-${vehicleId}-${Date.now()}`;
-  console.log(`[Relist] Scheduling new auction for vehicle ${vehicleId} in ${delaySeconds}s`);
-
-  const timeout = setTimeout(async () => {
-    auctionTimers.delete(timerId);
-    try {
-      const newAuction = await autoCreateAuction(vehicleId, previewSeconds, bidResetSeconds);
-      if (newAuction) {
-        // Immediately start preview
-        await prisma.auction.update({
-          where: { id: newAuction.id },
-          data: { status: "preview", startedAt: new Date() },
-        });
-        io.to(newAuction.id).emit("preview-started", { auctionId: newAuction.id, previewSeconds });
-        startPreviewTimer(newAuction.id, previewSeconds, io);
-        console.log(`[Relist] New auction ${newAuction.id} created & started`);
-      }
-    } catch (err) {
-      console.error(`[Relist] Error creating auction:`, err.message);
+async function restartAuctionServerSide(auctionId, io) {
+  stopAuctionTimer(auctionId);
+  try {
+    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) return;
+    if (auction.status !== "ended") {
+      console.log(`[Restart] Auction ${auctionId} is not ended, skipping`);
+      return;
     }
-  }, delaySeconds * 1000);
 
-  auctionTimers.set(timerId, { phase: "relist", timeout });
+    // Delete all bids, reset auction to preview, and mark vehicle as in_auction
+    await prisma.$transaction(async (tx) => {
+      await tx.bid.deleteMany({ where: { auctionId } });
+      await tx.auction.update({
+        where: { id: auctionId },
+        data: {
+          status: "preview",
+          currentHighestBid: null,
+          currentWinnerId: null,
+          bidCount: 0,
+          startedAt: new Date(),
+          endedAt: null,
+        },
+      });
+      await tx.vehicle.update({
+        where: { id: auction.vehicleId },
+        data: { status: "in_auction" },
+      });
+    });
+
+    // Notify clients and start preview countdown
+    io.to(auctionId).emit("preview-started", { auctionId, previewSeconds: auction.previewSeconds });
+    startPreviewTimer(auctionId, auction.previewSeconds, io);
+    console.log(`[Restart] Auction ${auctionId} restarted → preview (${auction.previewSeconds}s)`);
+  } catch (err) {
+    console.error(`[Restart] Error restarting ${auctionId}:`, err.message);
+  }
 }
 
 /**
- * Create a new auction for a vehicle (used by auto-relist and boot-time auto-create).
+ * Schedule a restart of the current auction after delaySeconds.
+ * The auction will be reset to pending (cleared bids, vehicle available).
  */
-async function autoCreateAuction(vehicleId, previewSeconds, bidResetSeconds) {
-  const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
-  if (!vehicle) { console.error(`[AutoAuction] Vehicle ${vehicleId} not found`); return null; }
+function scheduleRestart(auctionId, delaySeconds, io) {
+  const timerId = `restart-${auctionId}`;
+  console.log(`[Relist] Scheduling restart for auction ${auctionId} in ${delaySeconds}s`);
 
-  // Check no existing pending/preview/active auction for this vehicle
-  const existing = await prisma.auction.findFirst({
-    where: { vehicleId, status: { in: ["pending", "preview", "active"] } },
-  });
-  if (existing) { console.log(`[AutoAuction] Vehicle ${vehicleId} already has active auction`); return null; }
+  const timeout = setTimeout(async () => {
+    auctionTimers.delete(timerId);
+    await restartAuctionServerSide(auctionId, io);
+  }, delaySeconds * 1000);
 
-  // Find an admin user to be the creator
-  const admin = await prisma.user.findFirst({ where: { role: "admin", enabled: true } });
-  if (!admin) { console.error("[AutoAuction] No admin user found"); return null; }
-
-  // Ensure vehicle is in_auction
-  if (vehicle.status === "available") {
-    await prisma.vehicle.update({ where: { id: vehicleId }, data: { status: "in_auction" } });
-  }
-
-  return await prisma.auction.create({
-    data: {
-      vehicleId,
-      status: "pending",
-      bidResetSeconds,
-      previewSeconds,
-      autoRelist: true,
-      relistDelaySeconds: vehicle.relistDelaySeconds,
-      createdBy: admin.id,
-    },
-  });
+  auctionTimers.set(timerId, { phase: "restart", timeout });
 }
 
 app.prepare().then(() => {
@@ -409,6 +376,7 @@ app.prepare().then(() => {
   global.__startPreviewTimer = (auctionId, previewSeconds) => startPreviewTimer(auctionId, previewSeconds, io);
   global.__transitionToActive = (auctionId) => transitionToActive(auctionId, io);
   global.__endAuction = (auctionId) => endAuction(auctionId, io);
+  global.__restartAuction = (auctionId) => restartAuctionServerSide(auctionId, io);
 
   // Socket.IO auth middleware
   io.use(async (socket, next) => {
@@ -527,11 +495,14 @@ app.prepare().then(() => {
           vehicleTitle: result.vehicleTitle,
         });
 
-        // Reset timer
-        resetAuctionTimer(auctionId, result.updated.bidResetSeconds, io);
-        const timer = auctionTimers.get(auctionId);
-        const remaining = timer ? timer.resetSeconds : result.updated.bidResetSeconds;
-        io.to(auctionId).emit('timer-reset', { auctionId, remainingSeconds: remaining, phase: "active" });
+        // Add 60s to remaining time, capped at bidResetSeconds
+        const oldTimer = auctionTimers.get(auctionId);
+        const currentRemaining = oldTimer
+          ? Math.max(0, oldTimer.resetSeconds - Math.floor((Date.now() - oldTimer.lastBidTime.getTime()) / 1000))
+          : 0;
+        const nextSeconds = Math.min(currentRemaining + 60, result.updated.bidResetSeconds);
+        resetAuctionTimer(auctionId, nextSeconds, io);
+        io.to(auctionId).emit('timer-reset', { auctionId, remainingSeconds: nextSeconds, phase: "active" });
 
         socket.emit('bid-success', { auctionId, amount: result.bid.amount });
         console.log(`[Bid] ${user.nickname} bid ¥${amount} on auction ${auctionId}`);
